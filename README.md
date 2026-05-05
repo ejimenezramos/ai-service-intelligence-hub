@@ -33,10 +33,23 @@ Future versions may include API-based integration.
 - Pandas
 - Plotly
 - Gemini API
+- Hugging Face fallback provider
 - Prompt Engineering
 - AI-assisted analysis
 - IT Service Management
 - Backlog prioritization
+
+## AI provider configuration
+
+Create a `.env` file based on `.env.example` and configure the provider credentials as Windows environment variables or local `.env` values:
+
+```env
+GEMINI_API_KEY_2=
+INTELLIGENCE_HUB_HUGGING_FACE_TOKEN=
+INTELLIGENCE_HUB_HUGGING_FACE_MODEL_ID=Qwen/Qwen2.5-1.5B-Instruct
+```
+
+The app first tries Gemini, then Hugging Face, and finally uses backend-generated results if external AI providers are unavailable.
 
 ## Portfolio Context
 
