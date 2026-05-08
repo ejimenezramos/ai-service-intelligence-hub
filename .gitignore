@@ -2,4 +2,11 @@
 __pycache__/
 *.pyc
 .env
+.env.local
+.env.*.local
+.backups/
+.pytest_cache/
+.ruff_cache/
+*.log
+.DS_Store
 .streamlit/secrets.toml

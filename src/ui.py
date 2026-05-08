@@ -18,7 +18,7 @@ def load_css() -> None:
     st.markdown(
         f"<style>{css_path.read_text(encoding='utf-8')}</style>",
         unsafe_allow_html=True,
-        )
+    )
 
 
 def load_template(template_name: str) -> str:
