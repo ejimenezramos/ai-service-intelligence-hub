@@ -254,7 +254,8 @@ div {
 }
 
 .communications-section .assistant-card {
-    min-height: clamp(190px, 24dvh, 250px);
+    height: clamp(248px, 29dvh, 292px);
+    min-height: 0;
 }
 
 /* Hero */
@@ -1467,7 +1468,7 @@ div[data-testid="stPlotlyChart"] {
 .assistant-card {
     display: flex;
     flex-direction: column;
-    min-height: 242px;
+    min-height: 268px;
     margin-bottom: 1rem;
     background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFF 100%);
     border-radius: 18px;
@@ -1480,16 +1481,16 @@ div[data-testid="stPlotlyChart"] {
     box-shadow: var(--shadow-md);
 }
 
-.assistant-card-call {
-    min-height: 258px;
-}
-
 .assistant-card h4 {
     color: var(--navy-900);
     font-size: 1rem;
     line-height: 1.35;
     font-weight: 900;
     margin: 0.7rem 0 0.9rem;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .assistant-topline {
@@ -1549,6 +1550,10 @@ div[data-testid="stPlotlyChart"] {
     color: #263B51;
     font-size: 0.9rem;
     line-height: 1.45;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .assistant-actions {
@@ -2241,5 +2246,10 @@ html[data-theme="dark"] div[data-testid="stTabs"] [data-baseweb="tab-border"] {
     .assistant-topline {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .communications-section .assistant-card {
+        height: auto;
+        min-height: 248px;
     }
 }

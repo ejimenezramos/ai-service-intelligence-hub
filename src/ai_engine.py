@@ -7,7 +7,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from html import unescape
-from urllib.parse import quote
 
 from google import genai
 from google.genai import types
@@ -22,12 +21,22 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-lite"
-DEFAULT_HUGGING_FACE_MODEL_ID = "microsoft/Phi-3.5-mini-instruct"
+DEFAULT_HUGGING_FACE_MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct:novita"
+DEFAULT_HUGGING_FACE_FALLBACK_MODEL_IDS = [
+    "meta-llama/Llama-3.1-8B-Instruct:novita",
+    "deepseek-ai/DeepSeek-V4-Flash:novita",
+    "google/gemma-4-31B-it:novita",
+]
 LEGACY_UNSUPPORTED_HUGGING_FACE_MODEL_IDS = {"Qwen/Qwen2.5-1.5B-Instruct"}
+UNSUPPORTED_HUGGING_FACE_MODEL_IDS = {
+    "mistralai/Mistral-7B-Instruct-v0.2",
+    "HuggingFaceH4/zephyr-7b-beta",
+    "Qwen/Qwen2.5-7B-Instruct",
+    *LEGACY_UNSUPPORTED_HUGGING_FACE_MODEL_IDS,
+}
 HUGGING_FACE_ROUTER_URL = "https://router.huggingface.co/v1/chat/completions"
-HUGGING_FACE_INFERENCE_URL = "https://api-inference.huggingface.co/models"
-GEMINI_MAX_OUTPUT_TOKENS = 1400
-HUGGING_FACE_MAX_OUTPUT_TOKENS = 1200
+GEMINI_MAX_OUTPUT_TOKENS = 2200
+HUGGING_FACE_MAX_OUTPUT_TOKENS = 1800
 AI_GENERATION_TEMPERATURE = 0.2
 
 
@@ -49,16 +58,32 @@ def get_hugging_face_config() -> tuple[str | None, str]:
     legacy_model_id = os.getenv("INTELLIGENCE_HUB_HUGGING_FACE_MODEL_ID")
     model_id = new_model_id or legacy_model_id or DEFAULT_HUGGING_FACE_MODEL_ID
 
-    if not new_model_id and legacy_model_id in LEGACY_UNSUPPORTED_HUGGING_FACE_MODEL_IDS:
+    if model_id in UNSUPPORTED_HUGGING_FACE_MODEL_IDS:
         logger.warning(
-            "Hugging Face legacy model skipped | category=model_not_supported | "
-            "legacy_model=%s | replacement_model=%s",
-            legacy_model_id,
+            "Hugging Face configured model skipped | category=model_not_supported | "
+            "configured_model=%s | replacement_model=%s",
+            model_id,
             DEFAULT_HUGGING_FACE_MODEL_ID,
         )
         model_id = DEFAULT_HUGGING_FACE_MODEL_ID
 
     return api_token, model_id
+
+
+def _dedupe_model_ids(model_ids: list[str]) -> list[str]:
+    return list(dict.fromkeys(model_id.strip() for model_id in model_ids if model_id.strip()))
+
+
+def get_hugging_face_model_candidates() -> list[str]:
+    _, primary_model_id = get_hugging_face_config()
+    configured_fallbacks = os.getenv("INTELLIGENCE_HUB_HF_FALLBACK_MODELS", "")
+    fallback_model_ids = [
+        model_id.strip()
+        for model_id in configured_fallbacks.split(",")
+        if model_id.strip() and model_id.strip() not in UNSUPPORTED_HUGGING_FACE_MODEL_IDS
+    ] or DEFAULT_HUGGING_FACE_FALLBACK_MODEL_IDS
+
+    return _dedupe_model_ids([primary_model_id, *fallback_model_ids])
 
 
 def get_gemini_model_id() -> str:
@@ -161,7 +186,7 @@ def extract_json_from_response(text: str) -> dict:
         if match:
             return sanitize_ai_payload(json.loads(match.group(0)))
 
-    raise ValueError("Gemini response could not be parsed as JSON.")
+    raise ValueError("AI response could not be parsed as JSON.")
 
 
 def sanitize_ai_text(value: str) -> str:
@@ -200,9 +225,17 @@ def generate_ai_decision_layer(df: pd.DataFrame) -> dict:
     for attempt in range(1, 3):
         try:
             logger.info("Gemini request | model=%s | attempt=%s", model_id, attempt)
+            request_prompt = prompt
+            if attempt > 1:
+                request_prompt = (
+                    prompt
+                    + "\n\nFinal formatting reminder: return one complete, valid JSON object only. "
+                    "Do not omit commas, brackets or required keys."
+                )
+
             response = client.models.generate_content(
                 model=model_id,
-                contents=prompt,
+                contents=request_prompt,
                 config=generation_config,
             )
             return extract_json_from_response(response.text)
@@ -222,7 +255,7 @@ def generate_ai_decision_layer(df: pd.DataFrame) -> dict:
                     "Gemini quota exceeded. The app will continue using rule-based intelligence."
                 ) from error
 
-            if category == "availability" and attempt == 1:
+            if category in {"availability", "response_parse"} and attempt == 1:
                 time.sleep(1.25)
                 continue
 
@@ -235,6 +268,9 @@ def classify_gemini_error(error: Exception) -> tuple[str, str]:
     status_code = getattr(error, "status_code", None)
     text = str(error)
     text_lower = text.lower()
+
+    if isinstance(error, (json.JSONDecodeError, ValueError)) or "could not be parsed as json" in text_lower:
+        return "response_parse", _compact_text(text, max_chars=500)
 
     if status_code == 429 or "429" in text_lower or "quota" in text_lower or "resource_exhausted" in text_lower:
         return "quota", _compact_text(text, max_chars=500)
@@ -263,6 +299,9 @@ def classify_hugging_face_error(status_code: int | None, response_body: str = ""
 
     if status_code == 429 or "quota" in text or "rate limit" in text or "too many requests" in text:
         return "quota"
+
+    if "cloudflare" in text or "access denied | api." in text:
+        return "provider_access_denied"
 
     if status_code in {401, 403} or "unauthorized" in text or "forbidden" in text or "permission" in text:
         return "auth_or_permissions"
@@ -310,43 +349,35 @@ def _generate_hugging_face_router(prompt: str, model_id: str, api_token: str) ->
         ],
         "max_tokens": HUGGING_FACE_MAX_OUTPUT_TOKENS,
         "temperature": AI_GENERATION_TEMPERATURE,
+        "response_format": {"type": "json_object"},
     }
     parsed_response = _request_json(HUGGING_FACE_ROUTER_URL, payload, api_token)
     choices = parsed_response.get("choices", []) if isinstance(parsed_response, dict) else []
     return choices[0].get("message", {}).get("content", "") if choices else ""
 
 
-def _generate_hugging_face_inference(prompt: str, model_id: str, api_token: str) -> str:
-    endpoint = f"{HUGGING_FACE_INFERENCE_URL}/{quote(model_id, safe='')}"
-    payload = {
-        "inputs": (
-            "Return only valid JSON. Do not include markdown or commentary.\n\n"
-            f"{prompt}"
-        ),
-        "parameters": {
-            "max_new_tokens": HUGGING_FACE_MAX_OUTPUT_TOKENS,
-            "temperature": AI_GENERATION_TEMPERATURE,
-            "return_full_text": False,
-        },
-        "options": {
-            "wait_for_model": True,
-        },
-    }
-    parsed_response = _request_json(endpoint, payload, api_token, timeout=60)
+def _generate_hugging_face_text(prompt: str, model_id: str, api_token: str) -> str:
+    try:
+        return _generate_hugging_face_router(prompt, model_id, api_token)
+    except urllib.error.HTTPError as router_error:
+        router_body = _read_http_error(router_error)
+        router_category = classify_hugging_face_error(router_error.code, router_body)
+        logger.warning(
+            "Hugging Face router failed | model=%s | category=%s | status=%s | response=%s",
+            model_id,
+            router_category,
+            router_error.code,
+            _compact_text(router_body, max_chars=700),
+        )
 
-    if isinstance(parsed_response, list) and parsed_response:
-        first_item = parsed_response[0]
-        if isinstance(first_item, dict):
-            return first_item.get("generated_text", "")
+        if router_category in {"auth_or_permissions", "quota"}:
+            raise AlternativeAIError("Hugging Face router request failed.", category=router_category) from router_error
 
-    if isinstance(parsed_response, dict):
-        return parsed_response.get("generated_text", "")
-
-    return ""
+        raise AlternativeAIError("Hugging Face router request failed.", category=router_category) from router_error
 
 
 def generate_huggingface_decision_layer(df: pd.DataFrame) -> dict:
-    api_token, model_id = get_hugging_face_config()
+    api_token, _ = get_hugging_face_config()
 
     if not api_token:
         logger.warning("Hugging Face skipped | category=auth_or_permissions | detail=token_missing")
@@ -356,43 +387,43 @@ def generate_huggingface_decision_layer(df: pd.DataFrame) -> dict:
     prompt_template = read_prompt_template("executive_summary_prompt.txt")
     prompt = prompt_template.replace("{{INCIDENT_CONTEXT}}", context)
 
-    try:
+    last_error_category = "unknown"
+    for model_id in get_hugging_face_model_candidates():
         try:
-            generated_text = _generate_hugging_face_router(prompt, model_id, api_token)
-        except urllib.error.HTTPError as router_error:
-            router_body = _read_http_error(router_error)
-            router_category = classify_hugging_face_error(router_error.code, router_body)
+            logger.info("Hugging Face request | model=%s", model_id)
+            generated_text = _generate_hugging_face_text(prompt, model_id, api_token)
+
+            if not generated_text:
+                logger.warning("Hugging Face failed | category=empty_response | model=%s", model_id)
+                last_error_category = "empty_response"
+                continue
+
+            return extract_json_from_response(generated_text)
+
+        except urllib.error.HTTPError as error:
+            body = _read_http_error(error)
+            category = classify_hugging_face_error(error.code, body)
             logger.warning(
-                "Hugging Face router failed | model=%s | category=%s | status=%s | response=%s",
+                "Hugging Face inference failed | model=%s | category=%s | status=%s | response=%s",
                 model_id,
-                router_category,
-                router_error.code,
-                _compact_text(router_body, max_chars=700),
+                category,
+                error.code,
+                _compact_text(body, max_chars=700),
             )
-            if router_category in {"model_not_supported", "auth_or_permissions", "quota"}:
-                raise AlternativeAIError("Hugging Face router request failed.", category=router_category) from router_error
+            last_error_category = category
+            if category in {"auth_or_permissions", "quota"}:
+                raise AlternativeAIError("Hugging Face analysis failed.", category=category) from error
 
-            generated_text = _generate_hugging_face_inference(prompt, model_id, api_token)
+        except (urllib.error.URLError, json.JSONDecodeError, ValueError, AlternativeAIError) as error:
+            category = getattr(error, "category", "response_or_network")
+            logger.warning(
+                "Hugging Face failed | model=%s | category=%s | detail=%s",
+                model_id,
+                category,
+                _compact_text(error, max_chars=500),
+            )
+            last_error_category = category
+            if category in {"auth_or_permissions", "quota"}:
+                raise AlternativeAIError("Hugging Face analysis failed.", category=category) from error
 
-        if not generated_text:
-            logger.warning("Hugging Face failed | category=empty_response | model=%s", model_id)
-            raise AlternativeAIError("Hugging Face returned an empty response.", category="empty_response")
-
-        return extract_json_from_response(generated_text)
-
-    except urllib.error.HTTPError as error:
-        body = _read_http_error(error)
-        category = classify_hugging_face_error(error.code, body)
-        logger.warning(
-            "Hugging Face inference failed | category=%s | status=%s | response=%s",
-            category,
-            error.code,
-            _compact_text(body, max_chars=700),
-        )
-        raise AlternativeAIError("Hugging Face analysis failed.", category=category) from error
-    except (urllib.error.URLError, json.JSONDecodeError, ValueError) as error:
-        logger.warning(
-            "Hugging Face failed | category=response_or_network | detail=%s",
-            _compact_text(error, max_chars=500),
-        )
-        raise AlternativeAIError("Hugging Face analysis failed.", category="response_or_network") from error
+    raise AlternativeAIError("Hugging Face analysis failed.", category=last_error_category)

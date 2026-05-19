@@ -154,7 +154,8 @@ Create a local `.env` file from `.env.example`:
 INTELLIGENCE_HUB_GEMINI_API_KEY=
 INTELLIGENCE_HUB_GEMINI_MODEL=gemini-2.5-flash-lite
 INTELLIGENCE_HUB_HF_TOKEN=
-INTELLIGENCE_HUB_HF_MODEL=microsoft/Phi-3.5-mini-instruct
+INTELLIGENCE_HUB_HF_MODEL=meta-llama/Llama-3.1-8B-Instruct:novita
+INTELLIGENCE_HUB_HF_FALLBACK_MODELS=meta-llama/Llama-3.1-8B-Instruct:novita,deepseek-ai/DeepSeek-V4-Flash:novita,google/gemma-4-31B-it:novita
 ```
 
 For backwards compatibility, the application still accepts `GEMINI_API_KEY_2` and the previous Hugging Face variable names, but the project-specific names above are recommended for a professional deployment.

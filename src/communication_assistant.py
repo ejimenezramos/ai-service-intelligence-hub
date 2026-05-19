@@ -353,6 +353,28 @@ def _google_calendar_link(title: str, description: str) -> str:
     )
 
 
+def _stakeholders_from_ai(value: object) -> list[str]:
+    if isinstance(value, str):
+        candidates = re.split(r"[;,]", value)
+    elif isinstance(value, list):
+        candidates = [str(item) for item in value]
+    else:
+        candidates = []
+
+    return _dedupe([candidate.strip() for candidate in candidates if candidate.strip()])
+
+
+def _agenda_from_ai(value: object) -> list[str]:
+    if isinstance(value, str):
+        candidates = [line.strip(" -") for line in value.splitlines()]
+    elif isinstance(value, list):
+        candidates = [str(item).strip() for item in value]
+    else:
+        candidates = []
+
+    return [candidate for candidate in candidates if candidate]
+
+
 def _build_call_description(purpose: str, context: dict, stakeholders: list[str]) -> str:
     return f"""Purpose
 {purpose}
@@ -373,8 +395,86 @@ Potential owners: {", ".join(context["assignment_groups"]) or "N/A"}
 Named owners in sample: {", ".join(context["assigned_people"]) or "N/A"}"""
 
 
+def _build_ai_call_description(
+    purpose: str,
+    agenda: list[str],
+    rationale: str,
+    context: dict,
+    stakeholders: list[str],
+) -> str:
+    return f"""Purpose
+{purpose}
+
+Suggested stakeholders
+{_join_items(stakeholders, "Add the relevant stakeholder emails before sending the invite")}
+
+Agenda
+{_join_items(agenda, "Confirm incident impact, ownership, next actions and communication cadence")}
+
+Rationale
+{rationale or "Suggested from AI-prioritized incident impact, recurrence and leadership actions."}
+
+Context
+{context["executive_summary"]}
+
+Leadership actions to review
+{_join_items(context["leadership_actions"])}
+
+Operational signals
+Services: {", ".join(context["top_services"]) or "N/A"}
+Probable root causes: {", ".join(context["top_root_causes"]) or "N/A"}
+Potential owners: {", ".join(context["assignment_groups"]) or "N/A"}
+Named owners in sample: {", ".join(context["assigned_people"]) or "N/A"}"""
+
+
+def _calls_from_ai_suggestions(ai_result: dict, context: dict) -> list[dict]:
+    suggestions = ai_result.get("call_suggestions", [])
+    if not isinstance(suggestions, list):
+        return []
+
+    calls = []
+    for suggestion in suggestions[:2]:
+        if not isinstance(suggestion, dict):
+            continue
+
+        title = str(suggestion.get("title", "")).strip()
+        purpose = str(suggestion.get("purpose", "")).strip()
+        stakeholders = _stakeholders_from_ai(suggestion.get("stakeholders", []))
+        agenda = _agenda_from_ai(suggestion.get("agenda", []))
+        rationale = str(suggestion.get("rationale", "")).strip()
+
+        if not title or not purpose:
+            continue
+
+        description = _build_ai_call_description(
+            purpose=purpose,
+            agenda=agenda,
+            rationale=rationale,
+            context=context,
+            stakeholders=stakeholders,
+        )
+        calls.append(
+            {
+                "title": title,
+                "description": description,
+                "stakeholders": ", ".join(stakeholders) or "Stakeholders to be confirmed",
+                "stakeholder_summary": _summarize_recipients(
+                    [stakeholder for stakeholder in stakeholders if "@" in stakeholder]
+                ),
+                "purpose": purpose,
+                "calendar_link": _google_calendar_link(title, description),
+            }
+        )
+
+    return calls
+
+
 def generate_call_suggestions(enriched_df: pd.DataFrame, ai_result: dict, ai_mode: str) -> list[dict]:
     context = _build_context(enriched_df, ai_result, ai_mode)
+    ai_calls = _calls_from_ai_suggestions(ai_result, context)
+    if ai_calls:
+        return ai_calls
+
     primary_service = context["primary_service"]
 
     suggestions = [
