@@ -96,6 +96,22 @@ The repository includes three curated sample datasets under `data/`:
 
 Each dataset keeps the same schema so the parser, dashboards, AI analysis, and Communication Assistant work consistently across industries.
 
+## Try the Demo Data
+
+If you want to test the application without preparing your own incident export, use one of the sample files included in the repository:
+
+1. Clone or download this repository.
+2. Start the app locally with `streamlit run app.py`, or open the deployed version if one is provided.
+3. In the upload area, select one of the files from the `data/` folder:
+   - `data/sample_incidents_org1.csv` for a Retail / E-commerce incident scenario.
+   - `data/sample_incidents_org2.xlsx` for a Healthcare / Hospital incident scenario.
+   - `data/sample_incidents_org3.csv` for a B2B SaaS Platform incident scenario.
+4. Review the generated Operational Overview, Incident Workspace, AI Analysis, Backlog Priorities, and Communication Assistant outputs.
+
+The demo files are intentionally small and synthetic. They are designed to show the product workflow, recurring incident detection, business impact summarization, AI-generated leadership actions, stakeholder email drafts, and suggested follow-up calls.
+
+You can also upload your own CSV or Excel export as long as it follows the same schema described in `data/README.md`.
+
 ## Technical Stack
 
 - **Python** for backend logic and AI orchestration
@@ -166,7 +182,7 @@ For backwards compatibility, the application still accepts `GEMINI_API_KEY_2` an
 streamlit run app.py
 ```
 
-Then upload one of the demo files from `data/`.
+Then upload one of the demo files from `data/`, or use your own CSV/XLSX file with the same columns.
 
 ## Deployment Notes
 
