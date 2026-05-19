@@ -66,18 +66,21 @@ Return this exact JSON structure:
 }
 
 Rules for email_suggestions:
-- Return a maximum of 2 email suggestions.
+- Return exactly 2 email suggestions: this is both the minimum and the maximum.
 - Use only recipient emails that appear in opened_by_email, stakeholder_emails or team_emails.
+- If an email suggestion is useful but no verified recipient email is available for that audience, keep the recipients array empty and describe the intended audience clearly.
+- Make the 2 emails distinct from each other, for example one focused on business stakeholders and one focused on service/technical ownership.
 - Prioritize stakeholders linked to Critical, High, recurring or high business impact incidents.
 - Each email must connect to one or more leadership_actions.
 - Write polished, executive-ready email bodies with context, business impact, requested decision/action, ownership request and next-step cadence.
-- If there are no stakeholder emails in the dataset, return an empty email_suggestions array.
+- Do not return an empty email_suggestions array.
 
 Rules for call_suggestions:
-- Return a maximum of 2 call suggestions.
+- Return exactly 2 call suggestions: this is both the minimum and the maximum.
 - Use stakeholder emails only if they appear in opened_by_email, stakeholder_emails or team_emails.
 - You may also include role labels such as "Service Manager", "Product Owner", "Technical team lead" or "Business stakeholder" when the exact email is not available.
+- Make the 2 calls distinct from each other, for example one leadership/business alignment call and one technical/root-cause review call.
 - Prioritize calls for Critical, High, recurring or high business impact services.
 - Each call must connect to one or more leadership_actions.
 - The agenda must be practical, decision-oriented and suitable for a 30-45 minute enterprise operations meeting.
-- If there is not enough signal for a call, return an empty call_suggestions array.
+- Do not return an empty call_suggestions array.

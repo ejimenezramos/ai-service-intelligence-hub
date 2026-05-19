@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import plotly.express as px
 import streamlit as st
@@ -72,6 +73,24 @@ PRIORITY_COLORS = {
     "Low": "#8FD14F",
 }
 BACKLOG_COLORS = ["#215BFF", "#00A6A6", "#8FD14F", "#FFB020", "#6E6EF6", "#FF5A5F"]
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DEMO_DATASETS = [
+    {
+        "path": DATA_DIR / "sample_incidents_org1.csv",
+        "label": "Retail / E-commerce",
+        "mime": "text/csv",
+    },
+    {
+        "path": DATA_DIR / "sample_incidents_org2.xlsx",
+        "label": "Healthcare / Hospital",
+        "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    {
+        "path": DATA_DIR / "sample_incidents_org3.csv",
+        "label": "B2B SaaS Platform",
+        "mime": "text/csv",
+    },
+]
 
 
 def polish_chart(fig):
@@ -115,6 +134,34 @@ def render_preview_table(enriched_df):
 def render_context_nav(links: list[tuple[str, str]]) -> None:
     link_html = "".join([f'<a class="pill" href="{href}">{label}</a>' for label, href in links])
     render_template("context_nav.html", links=link_html)
+
+
+def render_demo_dataset_downloads() -> None:
+    st.markdown(
+        """
+        <div class="demo-download-card">
+          <span class="input-card-eyebrow">Demo files</span>
+          <h3>Try it with sample incident exports</h3>
+          <p>Download a synthetic CSV or Excel dataset, then upload it in the incident export area.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for dataset in DEMO_DATASETS:
+        dataset_path = dataset["path"]
+        if not dataset_path.exists():
+            st.caption(f"Demo file unavailable: {dataset_path.name}")
+            continue
+
+        st.download_button(
+            label=f"Download {dataset['label']}",
+            data=dataset_path.read_bytes(),
+            file_name=dataset_path.name,
+            mime=dataset["mime"],
+            use_container_width=True,
+            key=f"download-{dataset_path.stem}",
+        )
 
 
 def impact_badge(impact: str) -> str:
@@ -215,6 +262,7 @@ with st.container():
 
     with guidance_col:
         render_template("input_guidance_card.html")
+        render_demo_dataset_downloads()
 
     components.html(
         """
