@@ -17,7 +17,7 @@ from src.executive_summary import build_fallback_ai_decision, build_rule_based_s
 from src.incident_analyzer import enrich_incidents, get_pattern_summary
 from src.ui import escape_html, load_css, load_template, render_ai_card_grid, render_template
 
-
+#START
 logger = logging.getLogger(__name__)
 
 AI_SOURCE_GEMINI = "gemini"
