@@ -1750,6 +1750,14 @@ div[data-testid="stPlotlyChart"] {
     background: #0078D4;
 }
 
+.mail-app-link {
+    display: none;
+}
+
+.mail-app-link .icon-badge {
+    background: #188038;
+}
+
 .calendar-link .icon-badge {
     background: #188038;
 }
@@ -2432,5 +2440,14 @@ html[data-theme="dark"] div[data-testid="stTabs"] [data-baseweb="tab-border"] {
     .communications-section .assistant-card {
         height: auto;
         min-height: 248px;
+    }
+
+    .gmail-link,
+    .outlook-link {
+        display: none;
+    }
+
+    .mail-app-link {
+        display: inline-flex;
     }
 }

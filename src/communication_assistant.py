@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import re
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import pandas as pd
 
@@ -230,6 +230,7 @@ def _email_record(
     impact_summary: str = "",
 ) -> dict:
     to = ",".join(_dedupe(recipients))
+    mailto_link = "mailto:" + quote(to, safe=",") + "?" + urlencode({"subject": subject, "body": body})
 
     return {
         "audience": audience,
@@ -250,6 +251,7 @@ def _email_record(
                 "body": body,
             },
         ),
+        "mailto_link": mailto_link,
         "outlook_link": _email_link(
             "https://outlook.live.com/mail/0/deeplink/compose",
             {

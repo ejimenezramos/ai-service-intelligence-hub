@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import time
 from pathlib import Path
 
 import plotly.express as px
@@ -19,6 +21,7 @@ from src.ui import escape_html, load_css, load_template, render_ai_card_grid, re
 
 #START
 logger = logging.getLogger(__name__)
+COMMUNICATION_CACHE_TTL_SECONDS = 60 * 60
 
 AI_SOURCE_GEMINI = "gemini"
 AI_SOURCE_HUGGING_FACE = "huggingFace"
@@ -40,6 +43,18 @@ AI_FALLBACK_MESSAGE = (
     "The available AI providers could not complete the analysis. "
     "Showing basic backend-generated results instead."
 )
+
+
+def clear_communication_cache() -> None:
+    st.session_state.pop("communication_emails", None)
+    st.session_state.pop("communication_cache_key", None)
+    st.session_state.pop("communication_cache_expires_at", None)
+
+
+def expire_communication_cache() -> None:
+    expires_at = st.session_state.get("communication_cache_expires_at")
+    if expires_at and time.time() >= expires_at:
+        clear_communication_cache()
 
 TEAM_ICON = """
 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -343,10 +358,12 @@ except Exception as error:
     st.stop()
 
 
-data_signature = f"{uploaded_file.name}:{uploaded_file.size}"
+file_digest = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+data_signature = f"{uploaded_file.name}:{uploaded_file.size}:{file_digest}"
 if st.session_state.get("data_signature") != data_signature:
     st.session_state["data_signature"] = data_signature
     st.session_state["upload_scroll_nonce"] = st.session_state.get("upload_scroll_nonce", 0) + 1
+    clear_communication_cache()
     st.session_state.pop("ai_result", None)
     st.session_state.pop("ai_mode", None)
     st.session_state.pop("ai_source", None)
@@ -664,6 +681,7 @@ with st.container():
 
 
 if generate_ai:
+    clear_communication_cache()
     st.session_state["ai_request_id"] = st.session_state.get("ai_request_id", 0) + 1
     ai_request_key = f"{data_signature}:{st.session_state['ai_request_id']}"
     ai_source = AI_SOURCE_GEMINI
@@ -805,7 +823,14 @@ if ai_result:
 
         st.markdown('<div class="section-title">6. Communication Assistant Suggestions</div>', unsafe_allow_html=True)
 
-        emails = generate_all_emails(enriched_df, ai_result, ai_mode)
+        expire_communication_cache()
+        communication_cache_key = f"{data_signature}:{st.session_state.get('ai_request_id', 0)}:{ai_mode}"
+        if st.session_state.get("communication_cache_key") != communication_cache_key:
+            st.session_state["communication_emails"] = generate_all_emails(enriched_df, ai_result, ai_mode)
+            st.session_state["communication_cache_key"] = communication_cache_key
+            st.session_state["communication_cache_expires_at"] = time.time() + COMMUNICATION_CACHE_TTL_SECONDS
+
+        emails = st.session_state.get("communication_emails", [])
         email_cols = st.columns(2)
         for index, email in enumerate(emails):
             with email_cols[index % 2]:
@@ -817,6 +842,7 @@ if ai_result:
                     impact_summary=email["impact_summary"],
                     gmail_link=email["gmail_link"].replace("&", "&amp;"),
                     outlook_link=email["outlook_link"].replace("&", "&amp;"),
+                    mailto_link=email["mailto_link"].replace("&", "&amp;"),
                 )
 
         calls = generate_call_suggestions(enriched_df, ai_result, ai_mode)
