@@ -1,4 +1,5 @@
 import re
+from io import StringIO
 from zipfile import BadZipFile
 
 import pandas as pd
@@ -29,6 +30,28 @@ def normalize_column_name(column: object) -> str:
     return _COLUMN_ALIASES.get(normalized, normalized)
 
 
+def recover_mobile_csv_workbook(df: pd.DataFrame) -> pd.DataFrame:
+    """Recover a CSV imported into Excel with the wrong regional delimiter."""
+    if len(df.columns) > 4 or not any("," in str(value) for value in df.columns):
+        return df
+
+    # The remaining pandas column names are Unnamed placeholders because the
+    # malformed workbook only has the real CSV header in its first cell.
+    lines = [str(df.columns[0]).lstrip("'")]
+    for row in df.itertuples(index=False, name=None):
+        values = [str(value) for value in row if pd.notna(value)]
+        if not values:
+            continue
+        # Excel treats a leading apostrophe as a text marker when importing a
+        # CSV. It is not part of the original header or incident id.
+        lines.append(";".join(values).lstrip("'"))
+
+    if not lines:
+        return df
+
+    return pd.read_csv(StringIO("\n".join(lines)))
+
+
 def load_incidents(file) -> pd.DataFrame:
     file_name = str(getattr(file, "name", "")).strip()
     file_suffix = file_name.lower()
@@ -51,6 +74,7 @@ def load_incidents(file) -> pd.DataFrame:
     else:
         raise ValueError("Unsupported file format. Please upload a CSV or Excel file.")
 
+    df = recover_mobile_csv_workbook(df)
     df.columns = [normalize_column_name(column) for column in df.columns]
     missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_columns:
