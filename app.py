@@ -856,6 +856,8 @@ if ai_result:
                     purpose=call["purpose"],
                     calendar_link=call["calendar_link"].replace("&", "&amp;"),
                     outlook_calendar_link=call["outlook_calendar_link"].replace("&", "&amp;"),
+                    ics_link=call["ics_link"],
+                    ics_filename=call["ics_filename"],
                 )
 
     with st.container():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 import re
 from urllib.parse import quote, urlencode
 
@@ -381,7 +382,7 @@ def _google_calendar_link(title: str, description: str, attendees: list[str]) ->
 def _outlook_calendar_link(title: str, description: str, attendees: list[str]) -> str:
     start_time, end_time = _calendar_time_range()
     return _email_link(
-        "https://outlook.live.com/calendar/0/deeplink/compose",
+        "https://outlook.office.com/calendar/0/deeplink/compose",
         {
             "rru": "addevent",
             "path": "/calendar/action/compose",
@@ -396,6 +397,47 @@ def _outlook_calendar_link(title: str, description: str, attendees: list[str]) -
             "onlineMeetingProvider": "teamsForBusiness",
         },
     )
+
+
+def _ics_escape(value: str) -> str:
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+    )
+
+
+def _ics_calendar_link(title: str, description: str, attendees: list[str]) -> tuple[str, str]:
+    start_time, end_time = _calendar_time_range()
+    uid_source = f"{title}|{description}|{start_time.isoformat()}"
+    uid = hashlib.sha256(uid_source.encode("utf-8")).hexdigest()[:24]
+    attendee_lines = "".join(
+        f"ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:{email}\r\n" for email in attendees
+    )
+    ics = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//AI Service Intelligence Hub//EN\r\n"
+        "CALSCALE:GREGORIAN\r\n"
+        "METHOD:PUBLISH\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"UID:{uid}@ai-service-intelligence-hub\r\n"
+        f"DTSTAMP:{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}\r\n"
+        f"DTSTART:{start_time:%Y%m%dT%H%M%SZ}\r\n"
+        f"DTEND:{end_time:%Y%m%dT%H%M%SZ}\r\n"
+        f"SUMMARY:{_ics_escape(title)}\r\n"
+        f"DESCRIPTION:{_ics_escape(description)}\r\n"
+        "LOCATION:Microsoft Teams\r\n"
+        f"{attendee_lines}"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    filename = re.sub(r"[^A-Za-z0-9_-]+", "-", title).strip("-").lower() or "careeros-call"
+    return f"data:text/calendar;charset=utf-8,{quote(ics, safe='')}", f"{filename}.ics"
 
 
 def _stakeholders_from_ai(value: object) -> list[str]:
@@ -499,6 +541,7 @@ def _calls_from_ai_suggestions(ai_result: dict, context: dict) -> list[dict]:
             stakeholders=stakeholders,
         )
         attendee_emails = [stakeholder for stakeholder in stakeholders if "@" in stakeholder]
+        ics_link, ics_filename = _ics_calendar_link(title, description, attendee_emails)
         calls.append(
             {
                 "title": title,
@@ -510,6 +553,8 @@ def _calls_from_ai_suggestions(ai_result: dict, context: dict) -> list[dict]:
                 "purpose": purpose,
                 "calendar_link": _google_calendar_link(title, description, attendee_emails),
                 "outlook_calendar_link": _outlook_calendar_link(title, description, attendee_emails),
+                "ics_link": ics_link,
+                "ics_filename": ics_filename,
             }
         )
 
@@ -555,6 +600,9 @@ def generate_call_suggestions(enriched_df: pd.DataFrame, ai_result: dict, ai_mod
             suggested_stakeholders,
         )
         attendee_emails = [stakeholder for stakeholder in suggested_stakeholders if "@" in stakeholder]
+        ics_link, ics_filename = _ics_calendar_link(
+            suggestion["title"], description, attendee_emails
+        )
         calls.append(
             {
                 "title": suggestion["title"],
@@ -566,6 +614,8 @@ def generate_call_suggestions(enriched_df: pd.DataFrame, ai_result: dict, ai_mod
                 "outlook_calendar_link": _outlook_calendar_link(
                     suggestion["title"], description, attendee_emails
                 ),
+                "ics_link": ics_link,
+                "ics_filename": ics_filename,
             }
         )
 
