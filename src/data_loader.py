@@ -1,3 +1,6 @@
+import re
+from zipfile import BadZipFile
+
 import pandas as pd
 
 
@@ -14,6 +17,17 @@ REQUIRED_COLUMNS = [
     "business_impact",
 ]
 
+_COLUMN_ALIASES = {
+    "prioritu": "priority",
+}
+
+
+def normalize_column_name(column: object) -> str:
+    """Normalize headers exported by spreadsheet apps on desktop or mobile."""
+    normalized = str(column).strip().lower().strip("'\"`")
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+    return _COLUMN_ALIASES.get(normalized, normalized)
+
 
 def load_incidents(file) -> pd.DataFrame:
     file_name = str(getattr(file, "name", "")).strip()
@@ -27,10 +41,17 @@ def load_incidents(file) -> pd.DataFrame:
     if file_suffix.endswith(".csv"):
         df = pd.read_csv(file)
     elif file_suffix.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(file)
+        try:
+            df = pd.read_excel(file)
+        except (BadZipFile, OSError, ValueError):
+            # Some mobile spreadsheet apps preserve the CSV bytes while
+            # changing the filename to .xlsx. Accept that common case.
+            file.seek(0)
+            df = pd.read_csv(file)
     else:
         raise ValueError("Unsupported file format. Please upload a CSV or Excel file.")
 
+    df.columns = [normalize_column_name(column) for column in df.columns]
     missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
