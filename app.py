@@ -855,6 +855,7 @@ if ai_result:
                     stakeholder_summary=call["stakeholder_summary"],
                     purpose=call["purpose"],
                     calendar_link=call["calendar_link"].replace("&", "&amp;"),
+                    outlook_calendar_link=call["outlook_calendar_link"].replace("&", "&amp;"),
                 )
 
     with st.container():

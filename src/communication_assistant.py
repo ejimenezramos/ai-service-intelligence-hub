@@ -167,7 +167,14 @@ def _build_context(enriched_df: pd.DataFrame, ai_result: dict, ai_mode: str) -> 
 
 
 def _email_link(base_url: str, params: dict[str, str]) -> str:
-    return f"{base_url}?{urlencode(params)}"
+    return f"{base_url}?{urlencode(params, quote_via=quote)}"
+
+
+def _mailto_link(to: str, subject: str, body: str) -> str:
+    # mailto clients do not consistently decode the '+' space convention used
+    # by form-style urlencode, so encode each value as a URI component.
+    query = f"subject={quote(subject, safe='')}&body={quote(body, safe='')}"
+    return f"mailto:{quote(to, safe=',@')}?{query}"
 
 
 def _build_email_body(profile: dict, context: dict, row: pd.Series | None = None) -> str:
@@ -230,7 +237,7 @@ def _email_record(
     impact_summary: str = "",
 ) -> dict:
     to = ",".join(_dedupe(recipients))
-    mailto_link = "mailto:" + quote(to, safe=",") + "?" + urlencode({"subject": subject, "body": body})
+    mailto_link = _mailto_link(to, subject, body)
 
     return {
         "audience": audience,
@@ -263,7 +270,16 @@ def _email_record(
     }
 
 
-def _emails_from_ai_suggestions(ai_result: dict, ai_mode: str) -> list[dict]:
+def _dataset_stakeholder_emails(enriched_df: pd.DataFrame, limit: int = 6) -> list[str]:
+    emails = []
+    for _, row in _top_incident_rows(enriched_df, limit=2).iterrows():
+        emails.extend(_stakeholder_emails_for_row(row))
+    return _dedupe(emails)[:limit]
+
+
+def _emails_from_ai_suggestions(
+    enriched_df: pd.DataFrame, ai_result: dict, ai_mode: str
+) -> list[dict]:
     suggestions = ai_result.get("email_suggestions", [])
     if not isinstance(suggestions, list):
         return []
@@ -283,6 +299,8 @@ def _emails_from_ai_suggestions(ai_result: dict, ai_mode: str) -> list[dict]:
             recipients = _dedupe([email for value in recipients for email in _split_emails(value)])
         else:
             recipients = []
+
+        recipients = _dedupe([*recipients, *_dataset_stakeholder_emails(enriched_df)])
 
         if not subject or not body:
             continue
@@ -304,7 +322,7 @@ def _emails_from_ai_suggestions(ai_result: dict, ai_mode: str) -> list[dict]:
 
 
 def generate_all_emails(enriched_df: pd.DataFrame, ai_result: dict, ai_mode: str) -> list[dict]:
-    ai_emails = _emails_from_ai_suggestions(ai_result, ai_mode)
+    ai_emails = _emails_from_ai_suggestions(enriched_df, ai_result, ai_mode)
     if ai_emails:
         return ai_emails
 
@@ -337,13 +355,17 @@ def generate_all_emails(enriched_df: pd.DataFrame, ai_result: dict, ai_mode: str
 
 
 def _calendar_dates() -> str:
-    start_time = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-    start_time = start_time + timedelta(days=1, hours=1)
-    end_time = start_time + timedelta(minutes=45)
+    start_time, end_time = _calendar_time_range()
     return f"{start_time:%Y%m%dT%H%M%SZ}/{end_time:%Y%m%dT%H%M%SZ}"
 
 
-def _google_calendar_link(title: str, description: str) -> str:
+def _calendar_time_range() -> tuple[datetime, datetime]:
+    start_time = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    start_time = start_time + timedelta(days=1, hours=1)
+    return start_time, start_time + timedelta(minutes=45)
+
+
+def _google_calendar_link(title: str, description: str, attendees: list[str]) -> str:
     return _email_link(
         "https://calendar.google.com/calendar/render",
         {
@@ -351,6 +373,27 @@ def _google_calendar_link(title: str, description: str) -> str:
             "text": title,
             "details": description,
             "dates": _calendar_dates(),
+            "add": ",".join(attendees),
+        },
+    )
+
+
+def _outlook_calendar_link(title: str, description: str, attendees: list[str]) -> str:
+    start_time, end_time = _calendar_time_range()
+    return _email_link(
+        "https://outlook.live.com/calendar/0/deeplink/compose",
+        {
+            "rru": "addevent",
+            "path": "/calendar/action/compose",
+            "allday": "false",
+            "subject": title,
+            "body": description,
+            "to": ";".join(attendees),
+            "location": "Microsoft Teams",
+            "startdt": f"{start_time:%Y-%m-%dT%H:%M:%SZ}",
+            "enddt": f"{end_time:%Y-%m-%dT%H:%M:%SZ}",
+            "onlineMeeting": "true",
+            "onlineMeetingProvider": "teamsForBusiness",
         },
     )
 
@@ -455,6 +498,7 @@ def _calls_from_ai_suggestions(ai_result: dict, context: dict) -> list[dict]:
             context=context,
             stakeholders=stakeholders,
         )
+        attendee_emails = [stakeholder for stakeholder in stakeholders if "@" in stakeholder]
         calls.append(
             {
                 "title": title,
@@ -464,7 +508,8 @@ def _calls_from_ai_suggestions(ai_result: dict, context: dict) -> list[dict]:
                     [stakeholder for stakeholder in stakeholders if "@" in stakeholder]
                 ),
                 "purpose": purpose,
-                "calendar_link": _google_calendar_link(title, description),
+                "calendar_link": _google_calendar_link(title, description, attendee_emails),
+                "outlook_calendar_link": _outlook_calendar_link(title, description, attendee_emails),
             }
         )
 
@@ -502,16 +547,14 @@ def generate_call_suggestions(enriched_df: pd.DataFrame, ai_result: dict, ai_mod
 
     calls = []
     for suggestion in suggestions:
-        stakeholder_emails = []
-        for _, row in _top_incident_rows(enriched_df, limit=2).iterrows():
-            stakeholder_emails.extend(_stakeholder_emails_for_row(row))
-
-        suggested_stakeholders = _dedupe([*suggestion["stakeholders"], *stakeholder_emails[:6]])
+        stakeholder_emails = _dataset_stakeholder_emails(enriched_df)
+        suggested_stakeholders = _dedupe([*suggestion["stakeholders"], *stakeholder_emails])
         description = _build_call_description(
             suggestion["purpose"],
             context,
             suggested_stakeholders,
         )
+        attendee_emails = [stakeholder for stakeholder in suggested_stakeholders if "@" in stakeholder]
         calls.append(
             {
                 "title": suggestion["title"],
@@ -519,7 +562,10 @@ def generate_call_suggestions(enriched_df: pd.DataFrame, ai_result: dict, ai_mod
                 "stakeholders": ", ".join(suggested_stakeholders),
                 "stakeholder_summary": _summarize_recipients(stakeholder_emails[:6]),
                 "purpose": suggestion["purpose"],
-                "calendar_link": _google_calendar_link(suggestion["title"], description),
+                "calendar_link": _google_calendar_link(suggestion["title"], description, attendee_emails),
+                "outlook_calendar_link": _outlook_calendar_link(
+                    suggestion["title"], description, attendee_emails
+                ),
             }
         )
 
