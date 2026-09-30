@@ -1022,12 +1022,6 @@ div[data-testid="stFileUploader"] {
     background-color: transparent !important;
 }
 
-[data-testid="stFileUploaderDropzone"] section,
-[data-testid="stFileUploaderDropzone"] label,
-div[data-testid="stFileUploaderDropzoneInstructions"] {
-    display: none !important;
-}
-
 [data-testid="stFileUploaderDropzone"] section > div,
 [data-testid="stFileUploaderDropzone"] label + div,
 [data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderDropzoneInstructions"] + div {
@@ -1058,6 +1052,8 @@ div[data-testid="stFileUploaderDropzoneInstructions"] {
     border-radius: 12px !important;
     box-shadow: 0 10px 22px rgba(15, 91, 60, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
     opacity: 1 !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
 }
 
 [data-testid="stFileUploaderDropzone"] button *,
@@ -2315,6 +2311,20 @@ html[data-theme="dark"] div[data-testid="stTabs"] [data-baseweb="tab-border"] {
     div[data-testid="stFileUploader"] {
         width: 100%;
         min-height: auto;
+    }
+
+    div[data-testid="stFileUploader"] {
+        padding: 0.8rem;
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        min-height: 128px;
+        align-items: stretch !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button {
+        width: 100% !important;
+        min-height: 48px !important;
     }
 
     [data-testid="stFileUploaderDropzone"] > div > div:nth-child(2) {

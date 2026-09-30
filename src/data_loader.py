@@ -16,9 +16,17 @@ REQUIRED_COLUMNS = [
 
 
 def load_incidents(file) -> pd.DataFrame:
-    if file.name.endswith(".csv"):
+    file_name = str(getattr(file, "name", "")).strip()
+    file_suffix = file_name.lower()
+
+    # Mobile file pickers may preserve an uppercase extension or return a
+    # file-like object whose cursor was already read by the uploader.
+    if hasattr(file, "seek"):
+        file.seek(0)
+
+    if file_suffix.endswith(".csv"):
         df = pd.read_csv(file)
-    elif file.name.endswith((".xlsx", ".xls")):
+    elif file_suffix.endswith((".xlsx", ".xls")):
         df = pd.read_excel(file)
     else:
         raise ValueError("Unsupported file format. Please upload a CSV or Excel file.")

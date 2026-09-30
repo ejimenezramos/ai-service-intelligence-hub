@@ -255,9 +255,9 @@ with st.container():
             unsafe_allow_html=True,
         )
         uploaded_file = st.file_uploader(
-            "Incident export file",
+            "Incident export file (CSV, XLSX or XLS)",
             type=["csv", "xlsx", "xls"],
-            label_visibility="collapsed",
+            help="On mobile, tap Choose file and select the export from Files or Downloads.",
         )
 
     with guidance_col:
