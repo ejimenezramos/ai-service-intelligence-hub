@@ -1771,6 +1771,10 @@ div[data-testid="stPlotlyChart"] {
     font-size: 0.62rem;
 }
 
+.ics-calendar-link {
+    display: none;
+}
+
 .creator-footer {
     width: min(100%, 1180px);
     margin: 3rem auto 0;
@@ -2457,6 +2461,10 @@ html[data-theme="dark"] div[data-testid="stTabs"] [data-baseweb="tab-border"] {
     }
 
     .mail-app-link {
+        display: inline-flex;
+    }
+
+    .ics-calendar-link {
         display: inline-flex;
     }
 }

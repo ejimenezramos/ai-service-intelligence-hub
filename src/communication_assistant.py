@@ -381,6 +381,9 @@ def _google_calendar_link(title: str, description: str, attendees: list[str]) ->
 
 def _outlook_calendar_link(title: str, description: str, attendees: list[str]) -> str:
     start_time, end_time = _calendar_time_range()
+    # Outlook rejects oversized deeplink query strings. Keep the web draft
+    # concise; the complete AI-generated context remains in the .ics fallback.
+    compact_body = " ".join(str(description).split())[:280]
     return _email_link(
         "https://outlook.office.com/calendar/0/deeplink/compose",
         {
@@ -388,7 +391,7 @@ def _outlook_calendar_link(title: str, description: str, attendees: list[str]) -
             "path": "/calendar/action/compose",
             "allday": "false",
             "subject": title,
-            "body": description,
+            "body": compact_body,
             "to": ";".join(attendees),
             "location": "Microsoft Teams",
             "startdt": f"{start_time:%Y-%m-%dT%H:%M:%SZ}",
