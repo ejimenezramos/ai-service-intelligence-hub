@@ -860,6 +860,43 @@ if ai_result:
                     ics_filename=call["ics_filename"],
                 )
 
+        components.html(
+            """
+            <script>
+              (() => {
+                const doc = window.parent.document;
+                const bindOutlookLinks = () => {
+                  doc.querySelectorAll('.outlook-calendar-link').forEach((link) => {
+                    if (link.dataset.aisiBound === 'true') return;
+                    link.dataset.aisiBound = 'true';
+                    link.addEventListener('click', (event) => {
+                      event.preventDefault();
+                      const outlookWindow = window.parent.open('about:blank', '_blank');
+                      const downloadLink = doc.createElement('a');
+                      downloadLink.href = link.dataset.icsUrl;
+                      downloadLink.download = link.dataset.icsFilename;
+                      doc.body.appendChild(downloadLink);
+                      downloadLink.click();
+                      downloadLink.remove();
+                      window.parent.setTimeout(() => {
+                        if (outlookWindow && !outlookWindow.closed) {
+                          outlookWindow.location.href = link.dataset.outlookUrl;
+                        } else {
+                          window.parent.location.href = link.dataset.outlookUrl;
+                        }
+                      }, 450);
+                    });
+                  });
+                };
+
+                bindOutlookLinks();
+                window.parent.setTimeout(bindOutlookLinks, 250);
+              })();
+            </script>
+            """,
+            height=0,
+        )
+
     with st.container():
         st.markdown(
             '<div id="ai-summary-section" class="snap-anchor"></div>',

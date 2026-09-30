@@ -1766,15 +1766,6 @@ div[data-testid="stPlotlyChart"] {
     background: #0078D4;
 }
 
-.ics-calendar-link .icon-badge {
-    background: #5B5BD6;
-    font-size: 0.62rem;
-}
-
-.ics-calendar-link {
-    display: none;
-}
-
 .creator-footer {
     width: min(100%, 1180px);
     margin: 3rem auto 0;
@@ -2464,7 +2455,4 @@ html[data-theme="dark"] div[data-testid="stTabs"] [data-baseweb="tab-border"] {
         display: inline-flex;
     }
 
-    .ics-calendar-link {
-        display: inline-flex;
-    }
 }
